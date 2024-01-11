@@ -27,14 +27,14 @@ class BaseRNN:
         X	  : np array of size (N, bptt_depth) with the input sequence
         h0	 : np array of size (hidden_N) with starting state of h
         """
-        h = np.zeros((self.hidden_N, np.int(self.bptt_depth)))
+        h = np.zeros((self.hidden_N, self.bptt_depth))
         # initialize hidden state
         h[:, 0] = h0
 
-        y_hat = np.zeros((self.N, np.int(self.bptt_depth)))
+        y_hat = np.zeros((self.N, self.bptt_depth))
         y_hat[:, 0] = y[:, 0]  # first element is free
 
-        for i in np.arange(1, np.int(self.bptt_depth)):  # loop from 1:latest
+        for i in range(1, self.bptt_depth):  # loop from 1:latest
             u = self.W @ h[:, i - 1] + self.b + (self.U @ y[:, i-1])
             h[:, i] = np.tanh(u)
             o = self.V @ h[:, i] + self.c
@@ -75,12 +75,12 @@ class BPTTRNN(BaseRNN):
         L = np.sum(np.power(delta,2))
 
         # initialize jacobians used in error computation
-        dLdU = np.zeros((self.U.shape[0], self.U.shape[1], np.int(self.bptt_depth)))
-        dLdV = np.zeros((self.V.shape[0], self.V.shape[1], np.int(self.bptt_depth)))
-        dLdh = np.zeros((h.shape[0], np.int(self.bptt_depth)))
-        dLdW = np.zeros((self.W.shape[0], self.W.shape[1], np.int(self.bptt_depth)))
-        dLdb = np.zeros((self.b.shape[0], np.int(self.bptt_depth)))
-        dLdc = np.zeros((self.c.shape[0], np.int(self.bptt_depth)))
+        dLdU = np.zeros((self.U.shape[0], self.U.shape[1], self.bptt_depth))
+        dLdV = np.zeros((self.V.shape[0], self.V.shape[1], self.bptt_depth))
+        dLdh = np.zeros((h.shape[0], self.bptt_depth))
+        dLdW = np.zeros((self.W.shape[0], self.W.shape[1], self.bptt_depth))
+        dLdb = np.zeros((self.b.shape[0], self.bptt_depth))
+        dLdc = np.zeros((self.c.shape[0], self.bptt_depth))
 
         # last element
         dLdo = self.softmax_jacobian(y_hat[:, -1]) @ delta[:, -1]
@@ -123,12 +123,12 @@ class LocalRNN(BaseRNN):
         L = np.sum(np.power(delta,2))
 
         # initialize jacobians used in error computation
-        dLdU = np.zeros((self.U.shape[0], self.U.shape[1], np.int(self.bptt_depth)))
-        dLdV = np.zeros((self.V.shape[0], self.V.shape[1], np.int(self.bptt_depth)))
-        dLdh = np.zeros((h.shape[0], np.int(self.bptt_depth)))
-        dLdW = np.zeros((self.W.shape[0], self.W.shape[1], np.int(self.bptt_depth)))
-        dLdb = np.zeros((self.b.shape[0], np.int(self.bptt_depth)))
-        dLdc = np.zeros((self.c.shape[0], np.int(self.bptt_depth)))
+        dLdU = np.zeros((self.U.shape[0], self.U.shape[1], self.bptt_depth))
+        dLdV = np.zeros((self.V.shape[0], self.V.shape[1], self.bptt_depth))
+        dLdh = np.zeros((h.shape[0], self.bptt_depth))
+        dLdW = np.zeros((self.W.shape[0], self.W.shape[1], self.bptt_depth))
+        dLdb = np.zeros((self.b.shape[0], self.bptt_depth))
+        dLdc = np.zeros((self.c.shape[0], self.bptt_depth))
 
         for t in range(1, self.bptt_depth):
             dLdo = self.softmax_jacobian(y_hat[:, t]) @ delta[:, t]
@@ -138,6 +138,88 @@ class LocalRNN(BaseRNN):
             dLdU[:,:,t] = np.outer(dLdh[:,t], y[:,t])
             dLdb[:, t] = np.diag(1 - np.power(h[:, t], 2)) @ dLdh[:, t]
             dLdc[:, t] = dLdo
+
+        dLdV_accum = np.sum(dLdV, 2)
+        dLdW_accum = np.sum(dLdW, 2)
+        dLdU_accum = np.sum(dLdU, 2)
+        dLdb_accum = np.sum(dLdb, 1)
+        dLdc_accum = np.sum(dLdc, 1)
+        return L, dLdV_accum, dLdW_accum, dLdU_accum, dLdb_accum, dLdc_accum
+
+
+# Modified recirculation-trained Elman network
+class PredRec(BaseRNN):
+    """
+    Predictive-recircuation RNN: numpy based
+    Uses the auxillary-loss implementation, rather than assuming V = U.T
+    Inherits from BaseRNN
+    """
+    def __init__(self, N, hidden_N, bptt_depth):
+        super().__init__(N, hidden_N, bptt_depth)
+
+    def forward_propagation(self, y, h0):
+        """
+        X	  : np array of size (N, bptt_depth) with the input sequence
+        h0	 : np array of size (hidden_N) with starting state of h
+        """
+        h = np.zeros((self.hidden_N, self.bptt_depth))
+        # initialize hidden state
+        h[:, 0] = self.U @ y[:,0]
+
+        y_hat = np.zeros((self.N, self.bptt_depth))
+        y_hat[:, 0] = y[:, 0]
+
+        for i in np.arange(1, self.bptt_depth):  # loop from 1:latest
+            u = self.W @ h[:, i - 1] + self.b # closed-loop recurrence
+            h[:, i] = np.tanh(u)
+            o = self.V @ h[:, i] + self.c
+            y_hat[:, i] = softmax(o)
+        delta = y_hat[1::] - y[1::]  # loss vector
+        L = np.sum(np.power(delta, 2))  # MSE loss function (scalar)
+        return h, y_hat, L
+
+    def gradient(self, y, h0):
+
+        h = np.zeros((self.hidden_N, self.bptt_depth))
+        h[:, 0] = self.U @ y[:,0]
+        y_hat = np.zeros((self.N, self.bptt_depth))
+        y_hat[:, 0] = y[:, 0]
+
+        # initialize jacobians used in error computation
+        dLdU = np.zeros((self.U.shape[0], self.U.shape[1], self.bptt_depth))
+        dLdV = np.zeros((self.V.shape[0], self.V.shape[1], self.bptt_depth))
+        dLdh = np.zeros((h.shape[0], self.bptt_depth))
+        dLdW = np.zeros((self.W.shape[0], self.W.shape[1], self.bptt_depth))
+        dLdb = np.zeros((self.b.shape[0], self.bptt_depth))
+        dLdc = np.zeros((self.c.shape[0], self.bptt_depth))
+
+        for t in range(1, self.bptt_depth):
+            u_tilde = self.W @ h[:, t-1] + self.b
+            h_tilde = np.tanh(u_tilde)
+
+            u = self.U @ y[:,t]
+            h[:,t] = np.tanh(u)
+            o = self.V @ h[:,t] + self.c
+            y_hat[:,t] = softmax(o)
+
+            u_hat = self.U @ y_hat[:,t]
+            h_hat = np.tanh(u_hat)
+
+            # output weights
+            dLdo = self.softmax_jacobian(y_hat[:,t]) @ (y[:,t] - y_hat[:,t])
+            dLdV[:,:,t] = -1*np.outer(dLdo, h[:,t])
+            dLdc[:,t] = -1*dLdo
+
+            # inputs weights
+            dLdU[:,:,t] = -1*np.outer((h[:,t] - h_hat), y[:,t])
+
+            # recurrent weights
+            dLdh[:,t] = h[:,t] - h_tilde
+            dLdW[:,:,t] = -1*np.outer((np.diag(1 - np.power(h_tilde,2)) @ dLdh[:,t]), h[:,t-1])
+            dLdb[:,t] = -1*np.diag(1 - np.power(h_tilde,2)) @ dLdh[:,t]
+
+        delta = y - y_hat
+        L = np.sum(np.power(delta,2))
 
         dLdV_accum = np.sum(dLdV, 2)
         dLdW_accum = np.sum(dLdW, 2)
