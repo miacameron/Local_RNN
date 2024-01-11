@@ -98,6 +98,8 @@ def train_partial(Y_mini, h0, n_epochs, lr, learning_alg):
         net = BPTTRNN(N,hidden_N,T)
     elif (learning_alg == "local"):
         net = LocalRNN(N,hidden_N,T)
+    elif (learning_alg == "predrec"):
+        net = PredRec(N,hidden_N,T)
     else:
         raise NotImplementedError
 
