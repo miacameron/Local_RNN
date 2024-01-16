@@ -23,11 +23,12 @@ parser = argparse.ArgumentParser(description='Numpy BPTT Training')
 parser.add_argument('--epochs', default=40000, type=int, metavar='N',help='number of total epochs to run')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,metavar='LR', help='initial learning rate')
 parser.add_argument('-n', '--n', default=200, type=int, help='Input/output size')
-parser.add_argument('--hidden-n', default=200, type=int, help='Hidden dimension size')
+parser.add_argument('--hidden_n', default=200, type=int, help='Hidden dimension size')
 parser.add_argument('--savename', default='', type = str, help='output saving name')
 parser.add_argument('-t','--total_steps', default=100, type=int, help='Total steps per traversal')
 parser.add_argument('-p', '--print_freq', default=1000, type=int,metavar='N', help='print frequency (default: 1000)')
 parser.add_argument('--learning_alg', default='bptt', type=str, help='learning algorithm (default: bptt)')
+parser.add_argument('--inputfile', default='', type=str, help='name of input file (default: gaussian pc)')
 
 
 def main():
@@ -43,11 +44,18 @@ def main():
     learning_alg = args.learning_alg
     print_freq = args.print_freq
     savename = args.savename
+    inputfile = args.inputfile
 
-    # Creating Gaussian inputs
-    inputs = create_inputs(N, T+1, T, sigma=15)
-    y_mini = np.zeros((N, T))
-    y_mini = inputs
+    if (inputfile == ''):
+        # Creating Gaussian inputs
+        inputs = create_inputs(N, T+1, T, sigma=15)
+        y_mini = np.zeros((N, T))
+        y_mini = inputs
+    else:
+        f = open(inputfile, 'rb')
+        y_mini = pickle.load(f)
+        f.close()
+        assert(y_mini.shape == (N, T))
 
     # Init. first hidden state as zeros
     h0 = np.zeros((hidden_N))
@@ -105,18 +113,17 @@ def train_partial(Y_mini, h0, n_epochs, lr, learning_alg):
 
     while epoch < n_epochs:
         y = Y_mini
-        # not optimized - doing forward prop twice
-        h_seq, y_hat, L = net.forward_propagation(y,h0)
-        dLdV, dLdW, dLdU, dLdb, dLdc = net.gradient(y,h0)
+        L, dLdV, dLdW, dLdU, dLdb, dLdc = net.gradient(y,h0)
         loss_list.append(L)
-        dLdW_list.append(dLdW)
-        dLdV_list.append(dLdV)
-        dLdU_list.append(dLdU)
-        dLdb_list.append(dLdb)
-        dLdc_list.append(dLdc)
+        #dLdW_list.append(dLdW)
+        #dLdV_list.append(dLdV)
+        #dLdU_list.append(dLdU)
+        #dLdb_list.append(dLdb)
+        #dLdc_list.append(dLdc)
         net.update_weights(dLdV, dLdW, dLdU, dLdb, dLdc, lr) # Updates the weights accordingly
         epoch += 1
         if epoch%args.print_freq == 0:
+            h_seq, y_hat, L = net.forward_propagation(y,h0)
             hidden_rep.append(h_seq)
             output_rep.append(y_hat)
             print('Epoch: {}/{}.............'.format(epoch,n_epochs), end=' ')

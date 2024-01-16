@@ -38,14 +38,15 @@ class BaseRNN:
             u = self.W @ h[:, i - 1] + self.b + (self.U @ y[:, i-1])
             h[:, i] = np.tanh(u)
             o = self.V @ h[:, i] + self.c
-            y_hat[:, i] = softmax(o)
+            y_hat[:, i] = np.tanh(o)
         delta = y_hat[1::] - y[1::]  # loss vector
         L = np.sum(np.power(delta, 2))  # MSE loss function (scalar)
         return h, y_hat, L
 
     def softmax_jacobian(self, x):
-        J = -1 * np.outer(x, x)
-        J += np.diag(x)
+        #J = -1 * np.outer(x, x)
+        #J += np.diag(x)
+        J = np.diag(1 - np.power(x,2))
         return J
 
     def gradient(self, y, h0):
