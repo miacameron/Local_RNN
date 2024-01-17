@@ -1,1 +1,4 @@
 /results/*
+/notebooks/*
+/data/*
+/__pycache__/*
