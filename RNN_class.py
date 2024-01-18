@@ -22,23 +22,27 @@ class BaseRNN:
         self.b = np.random.uniform(-0.1, 0.1, size=(hidden_N))
         self.c = np.random.uniform(-0.1, 0.1, size=(N))
 
-    def forward_propagation(self, y, h0):
+    def forward_propagation(self, y, h0, closed=False):
         """
         X	  : np array of size (N, bptt_depth) with the input sequence
         h0	 : np array of size (hidden_N) with starting state of h
         """
         h = np.zeros((self.hidden_N, self.bptt_depth))
         # initialize hidden state
-        h[:, 0] = h0
 
         y_hat = np.zeros((self.N, self.bptt_depth))
-        y_hat[:, 0] = y[:, 0]  # first element is free
+        h[:,0] = h0
+        y_hat[:,0] = y[:,0]
 
         for i in range(1, self.bptt_depth):  # loop from 1:latest
-            u = self.W @ h[:, i - 1] + self.b + (self.U @ y[:, i-1])
-            h[:, i] = np.tanh(u)
-            o = self.V @ h[:, i] + self.c
-            y_hat[:, i] = np.tanh(o)
+            if (closed):
+                y_ = y_hat[:,i-1]
+            else:
+                y_ = y[:,i-1]
+            u = self.W @ h[:,i-1] + self.b + (self.U @ y_)
+            h[:,i] = np.tanh(u)
+            o = self.V @ h[:,i] + self.c
+            y_hat[:,i] = np.tanh(o)
         delta = y_hat[1::] - y[1::]  # loss vector
         L = np.sum(np.power(delta, 2))  # MSE loss function (scalar)
         return h, y_hat, L
@@ -92,14 +96,14 @@ class BPTTRNN(BaseRNN):
         dLdb[:, -1] = np.diag(1 - np.power(h[:, -1], 2)) @ dLdh[:, -1]
         dLdc[:, -1] = dLdo
 
-        for t in range(self.bptt_depth - 2, 1, -1):
-            dLdo = self.softmax_jacobian(y_hat[:, t]) @ delta[:, t]
-            dLdV[:, :, t] = np.outer(dLdo, h[:, t])
-            dLdh[:, t] = self.W.T @ dLdh[:, t + 1] @ np.diag(1 - np.power(h[:, t + 1], 2)) + self.V.T @ dLdo
-            dLdW[:, :, t] = np.outer((np.diag(1 - np.power(h[:, t], 2)) @ dLdh[:, t]), h[:, t - 1])
+        for t in range(self.bptt_depth - 2, 0, -1):
+            dLdo = self.softmax_jacobian(y_hat[:,t]) @ delta[:,t]
+            dLdV[:,:,t] = np.outer(dLdo, h[:,t])
+            dLdh[:,t] = self.W.T @ dLdh[:,t+1] @ np.diag(1 - np.power(h[:,t+1],2)) + self.V.T @ dLdo
+            dLdW[:,:,t] = np.outer((np.diag(1 - np.power(h[:,t],2)) @ dLdh[:,t]), h[:,t-1])
             dLdU[:,:,t] = np.outer(dLdh[:,t], y[:,t])
-            dLdb[:, t] = np.diag(1 - np.power(h[:, t], 2)) @ dLdh[:, t]
-            dLdc[:, t] = dLdo
+            dLdb[:,t] = np.diag(1 - np.power(h[:,t],2)) @ dLdh[:,t]
+            dLdc[:,t] = dLdo
 
         dLdV_accum = np.sum(dLdV, 2)
         dLdW_accum = np.sum(dLdW, 2)
@@ -132,13 +136,13 @@ class LocalRNN(BaseRNN):
         dLdc = np.zeros((self.c.shape[0], self.bptt_depth))
 
         for t in range(1, self.bptt_depth):
-            dLdo = self.softmax_jacobian(y_hat[:, t]) @ delta[:, t]
-            dLdV[:, :, t] = np.outer(dLdo, h[:, t])
-            dLdh[:, t] = self.U @ dLdo # truncated 
-            dLdW[:, :, t] = np.outer((np.diag(1 - np.power(h[:, t], 2)) @ dLdh[:, t]), h[:, t - 1])
+            dLdo = self.softmax_jacobian(y_hat[:,t]) @ delta[:,t]
+            dLdV[:,:,t] = np.outer(dLdo, h[:,t])
+            dLdh[:,t] = self.U @ dLdo # truncated 
+            dLdW[:,:,t] = np.outer((np.diag(1 - np.power(h[:,t],2)) @ dLdh[:,t]), h[:,t-1])
             dLdU[:,:,t] = np.outer(dLdh[:,t], y[:,t])
-            dLdb[:, t] = np.diag(1 - np.power(h[:, t], 2)) @ dLdh[:, t]
-            dLdc[:, t] = dLdo
+            dLdb[:,t] = np.diag(1 - np.power(h[:,t], 2)) @ dLdh[:,t]
+            dLdc[:,t] = dLdo
 
         dLdV_accum = np.sum(dLdV, 2)
         dLdW_accum = np.sum(dLdW, 2)

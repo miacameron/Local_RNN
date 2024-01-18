@@ -57,7 +57,7 @@ def main():
         f.close()
         assert(y_mini.shape == (N, T))
 
-    # Init. first hidden state as zeros
+    # Init. first hidden state as normal rv
     h0 = np.zeros((hidden_N))
 
     net, loss_list, grad_list, hidden_rep, output_rep = train_partial(y_mini, h0, epochs, lr, learning_alg)
@@ -115,11 +115,11 @@ def train_partial(Y_mini, h0, n_epochs, lr, learning_alg):
         y = Y_mini
         L, dLdV, dLdW, dLdU, dLdb, dLdc = net.gradient(y,h0)
         loss_list.append(L)
-        #dLdW_list.append(dLdW)
-        #dLdV_list.append(dLdV)
-        #dLdU_list.append(dLdU)
-        #dLdb_list.append(dLdb)
-        #dLdc_list.append(dLdc)
+        dLdW_list.append(np.sum(np.sum(dLdW)))
+        dLdV_list.append(np.sum(np.sum(dLdV)))
+        dLdU_list.append(np.sum(np.sum(dLdU)))
+        dLdb_list.append(np.sum(dLdb))
+        dLdc_list.append(np.sum(dLdc))
         net.update_weights(dLdV, dLdW, dLdU, dLdb, dLdc, lr) # Updates the weights accordingly
         epoch += 1
         if epoch%args.print_freq == 0:
